@@ -7,6 +7,7 @@ import Plutarch.Bool
 import "liqwid-plutarch-extra" Plutarch.Extra.TermCont 
 import "liqwid-plutarch-extra" Plutarch.Extra.List (plookupAssoc)
 import Plutarch.Api.V1 (PCredential(..))
+import Plutarch.Api.V1.AssocMap (plookup)
 
 pexpectJust :: Term s r -> Term s (PMaybe a) -> TermCont @r s (Term s a)
 pexpectJust escape ma = tcont $ \f -> pmatch ma $ \case
@@ -143,3 +144,35 @@ pbreakTokenName :: Term s PTokenName -> Term s (PPair PByteString PByteString)
 pbreakTokenName tn = 
   let tnBS = pto tn 
    in pcon $ PPair (psliceBS # 0 # 4 # tnBS) (psliceBS # 4 # (plengthBS # tnBS) # tnBS)
+
+ptryGetContinuingOutput :: Term s (PBuiltinList PTxInInfo :--> PBuiltinList PTxOut :--> PTxOutRef :--> PTxOut)
+ptryGetContinuingOutput = phoistAcyclic $
+  plam $ \inputs outputs outRef ->
+    pmatch (ptryOwnInput # inputs # outRef) $ \case
+      PTxOut tx -> do
+        let outAddr         = pfield @"address" # tx
+            filteredOutputs = pfilter # (matches # outAddr) # outputs
+        pif
+          (plength # filteredOutputs #== pconstant 1)
+          (phead # filteredOutputs)
+          perror
+            
+      --_ -> ptraceError "can't get any continuing outputs" ask: why can't I use _ -> here??
+  where
+    matches :: Term s (PAddress :--> PTxOut :--> PBool)
+    matches = phoistAcyclic $
+      plam $ \adr txOut ->
+        adr #== pfield @"address" # txOut
+
+
+ptryParseDatum :: Term s (PDatumHash :--> PMap 'Unsorted PDatumHash PDatum :--> PMaybe PDatum)
+ptryParseDatum = phoistAcyclic $
+  plam $ \dh datums ->
+    pmatch (plookup # dh # datums) $ \case
+      PNothing    ->        pcon PNothing
+      PJust datum ->        pcon $ PJust datum
+
+pheadSingleton :: (PListLike list, PElemConstraint list a) => Term s (list a :--> a)
+pheadSingleton = phoistAcyclic $
+  plam $ \xs ->
+    pelimList (\x xs -> (pelimList (\_ _ -> perror) x xs)) perror xs 

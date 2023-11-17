@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 module Main (main) where
 
-import EmurgoMinting qualified
---import DAOValidator qualified 
-import ParamApp qualified 
+import OracleNFT qualified 
+import Collateral qualified
+import PriceFeedOracle qualified
+import Minting qualified
 import Data.Default (
   def,
  )
@@ -40,35 +41,10 @@ import PlutusLedgerApi.V2 (
 import Data.Bifunctor (
   first,
  )
-encodeSerialiseCBOR :: Script -> Text
-encodeSerialiseCBOR = Text.decodeUtf8 . Base16.encode . CBOR.serialize' . serialiseScript
-
-evalT :: ClosedTerm a -> Either Text (Script, ExBudget, [Text])
-evalT x = evalWithArgsT x []
-
-evalWithArgsT :: ClosedTerm a -> [Data] -> Either Text (Script, ExBudget, [Text])
-evalWithArgsT x args = do
-  cmp <- compile (Config DoTracing) x
-  let (escr, budg, trc) = evalScript $ applyArguments cmp args
-  scr <- first (pack . show) escr
-  pure (scr, budg, trc)
-
-writePlutusScript :: String -> FilePath -> ClosedTerm a -> IO ()
-writePlutusScript title filepath term = do
-  case evalT term of
-    Left e -> putStrLn (show e)
-    Right (script, _, _) -> do
-      let
-        scriptType = "PlutusScriptV2" :: String
-        plutusJson = object ["type" .= scriptType, "description" .= title, "cborHex" .= encodeSerialiseCBOR script]
-        content = encodePretty plutusJson
-      LBS.writeFile filepath content
 
 main :: IO ()
 main = do
-  -- strPutLn $ ParamApp.toSchema (DataParam {pkh = "deadbeef", password = "deadbeef"})
-  writeTypedScript def "minting" "./compiled/emurgoMintingPolicy.plutus" EmurgoMinting.emurgoMintingPolicy
---  writePlutusScript "multisig" "./compiled/multisigValidator.plutus" DAOValidator.emurgoDAOValidatorW
-  writePlutusScript "metadata" "./compiled/metadataControl.plutus" EmurgoMinting.emurgoOnchainMetadataValidatorW
-  -- writePlutusScript "multisigStateMint" "./compiled/multisigStateMint.plutus" DAOValidator.pvalidateDaoStateMintW
-  --writePlutusScript "smallValidator" "./compiled/smallValidator.plutus" SmallValidator.pvalidateSmallChecksW
+  writeTypedScript def "mintingOracleNFT" "./compiled/oracleNFTMintingPolicy.plutus" OracleNFT.oracleNFTPolicy
+  writeTypedScript def "collateralValidator" "./compiled/collateralValidator.plutus" Collateral.collateralValidator
+  writeTypedScript def "priceFeedOracle" "./compiled/priceFeedOracleValidator.plutus" PriceFeedOracle.priceFeedOracleValidator
+  writeTypedScript def "mintingDUSD" "./compiled/dUSDMintingPolicy.plutus" Minting.mintingDUSDPolicy
